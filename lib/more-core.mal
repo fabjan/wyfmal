@@ -1,0 +1,16 @@
+;; mal has a pretty small core library
+;; more-core has some extensions to it
+
+(defmacro! defmcr!
+    (fn* [name args body]
+        `(defmacro! ~name (fn* ~args ~body))))
+
+(defmcr! defn! [name args body]
+    `(def! ~name (fn* ~args ~body)))
+
+(defn! or [fst & rst]
+    (if fst
+        fst
+        (if (empty? rst)
+            nil
+            (apply or rst))))

@@ -1,0 +1,53 @@
+(load-file      "lib/load-file-once.mal")
+(load-file-once "lib/more-core.mal")
+
+;; We will read code from standard input,
+;; mal only provides the readline function so
+;; we define some wrappers around it.
+
+(def! *stdin* (atom nil))
+
+(defn! peekc []
+    (do
+        (if (nil? (first (deref *stdin*)))
+            (let* [line (readline "")]
+                (if (not (nil? line))
+                    (reset! *stdin* (seq (str line "\n"))))))
+        (first (deref *stdin*))))
+
+(defn! getc []
+    (let* [c (peekc)]
+        (do (swap! *stdin* rest) c)))
+
+;; There shall be a get-next function
+;; to get the next word.
+
+(defn! get-next []
+    (do
+        (drop-space)
+        (slurp-word)))
+
+;; get-next needs some helpers.
+
+(defn! drop-space []
+    (if (space? (peekc))
+        (do (getc) (drop-space))))
+
+(defn! slurp-word [] (slurp-word- []))
+(defn! slurp-word- [acc]
+    (cond
+        (nil? (peekc))   (apply str acc)
+        (space? (peekc)) (apply str acc)
+        :else            (slurp-word- (conj acc (getc)))))
+
+(defn! space? [c]
+    (or (= " " c)
+        (= "\n" c)))
+
+;; Go forth!
+
+(defn! forth []
+    (let* [w (get-next)]
+        (println (str "The first word is '" w "'."))))
+
+(forth)
