@@ -14,3 +14,12 @@
         (if (empty? rst)
             nil
             (apply or rst))))
+
+(defn! and [fst & rst]
+    (if (or (not fst) (empty? rst))
+        fst
+        (apply and rst)))
+
+(def! partial (fn* [f & defargs]
+  (fn* [& appargs]
+    (apply f (concat defargs appargs)))))

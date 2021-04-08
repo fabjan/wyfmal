@@ -44,10 +44,59 @@
     (or (= " " c)
         (= "\n" c)))
 
+;; Now we need a stack ...
+
+(def! *stack* (atom (list)))
+
+(defn! push! [x]
+    (swap! *stack* (partial cons x)))
+
+(defn! pop! []
+    (let* [top (first (deref *stack*))]
+        (do (swap! *stack* rest) top)))
+
+;; ... and a dictionary ...
+
+(def! *dict* (atom {}))
+
+(defmcr! defword! [name body]
+    `(swap! *dict* (fn* [d] (assoc d ~name (fn* [] ~body)))))
+
+(defn! recall [w]
+    (get (deref *dict*) w))
+
+;; ... with some builtins
+
+(defword! "+"
+          (let* [a (pop!) b (pop!)] (push! (+ a b))))
+
+(defword! "print"
+          (println (pop!)))
+
+;; We're gonna need some more helpers for reading numbers.
+
+(defn! digit? [c]
+    (apply or (map (partial = c) (seq "0123456789"))))
+
+(defn! numeric? [s]
+    (let* [chars (seq s)]
+        (if (nil? chars)
+            false
+            (apply and (map digit? chars)))))
+
+(defn! number [s]
+    (read-string s))
+
 ;; Go forth!
 
 (defn! forth []
     (let* [w (get-next)]
-        (println (str "The first word is '" w "'."))))
+        (if (not (= "" w))
+            (do
+                (cond
+                    (recall w)   (apply (recall w))
+                    (numeric? w) (push! (number w))
+                    :otherwise   (throw (str "unknown word '" w "'")))
+                (forth)))))
 
 (forth)
