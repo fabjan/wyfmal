@@ -133,7 +133,7 @@
         (trace "jump to" addr)
         (if (in-mem? addr)
             (reset! *next* addr)
-            (throw (str "cannot jump to" skip)))))
+            (throw-str "cannot jump to" skip))))
 
 (defn! skip! [skip]
     (jump! (+ (deref *next*) (number skip))))
@@ -193,18 +193,105 @@
 (defword! "notrace"
           (set-tracing! false))
 
+;; Compiling is a different mode from interpreting,
+;; so we have to tell those apart.
+
+(def! *mode* (atom ""))
+
+(defn! set-mode! [new-mode]
+    (do
+        (trace "mode is now" new-mode)
+        (reset! *mode* new-mode)))
+
+(defn! start-compiling! []
+    (let* [w (next-word!)]
+        (cond
+            (nil? w)     (throw-str "cannot compile nothing")
+            (numeric? w) (throw-str "can't compile a number")
+            :otherwise   (do
+                             (remember-addr! w (deref *next*))
+                             (set-mode! "compile")))))
+
+(defn! remember-addr! [w addr]
+    (swap! *dict* (fn* [d] (assoc d w addr))))
+
+;; For calling words we need to be able to return,
+;; a stack can track this state.
+
+(def! *return-stack* (atom (list)))
+
+(defn! rpush! [x]
+    (do
+        (trace "rpush" x)
+        (swap! *return-stack* (partial cons x))))
+
+(defn! rpop! []
+    (let* [top (first (deref *return-stack*))]
+        (do
+            (trace "rpop" top)
+            (swap! *return-stack* rest)
+            top)))
+
+(defn! call! [w]
+    (let* [x (recall w)]
+        (cond
+            (fn? x)     (apply x)
+            (number? x) (do (rpush! (deref *next*)) (jump! x))
+            :otherwise  (throw-str "cannot call" w "(" x " in dict)"))))
+
+;; More arithmetic.
+
+(defword! "-"
+          (let* [a (pop!) b (pop!)] (push! (- b a))))
+
+(defword! "*"
+          (let* [a (pop!) b (pop!)] (push! (* a b))))
+
+(defword! "/"
+          (let* [a (pop!) b (pop!)] (push! (/ b a))))
+
+;; We can now run the program:
+;;     : ++ 1 + ;
+;;     : square dup * ;
+;;     : cube square square ;
+;;     : half 2 / ;
+;;     6 cube 7 * 19 square + half 5 - print
+
 ;; Go forth!
 
 (defn! forth []
+    (cond
+        (= (deref *mode*) "interpret") (interpret)
+        (= (deref *mode*) "compile")   (compile)
+        (= (deref *mode*) "stop")      (trace "kthxbye")))
+
+(defn! interpret []
     (let* [w (next-word!)]
-        (if (not (nil? w))
-            (do
+        (do
+            (trace "interpreting" w)
+            (if (nil? w)
+                (set-mode! "stop")
                 (cond
-                    (recall w)   (apply (recall w))
+                    (recall w)   (call! w)
                     (numeric? w) (push! (number w))
-                    :otherwise   (throw (str "unknown word '" w "'")))
-                (forth)))))
+                    (= ":" w)    (start-compiling!)
+                    (= ";" w)    (jump! (rpop!))
+                    :otherwise   (throw-str "unknown word '" w "'")))
+            (forth))))
+
+(defn! compile []
+    (let* [w (next-word!)]
+        (do
+            (if (nil? w)
+                (set-mode! "stop")
+                (cond
+                    (recall w)   (trace "compiling" w)
+                    (numeric? w) (trace "compiling" w)
+                    (= ";" w)    (set-mode! "interpret")
+                    :otherwise   (throw-str "unknown word '" w "'")))
+            (forth))))
 
 (slurp-prog!)
 (reset! *next* 0)
+(set-mode! "interpret")
 (forth)

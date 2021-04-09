@@ -55,3 +55,6 @@
 
 (defn! comp [& fs]
     (foldr comp2 (last fs) (butlast fs)))
+
+(defn! throw-str [& args]
+    (throw (apply str args)))
