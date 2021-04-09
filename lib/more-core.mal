@@ -1,3 +1,7 @@
+(load-file      "lib/load-file-once.mal")
+(load-file-once "lib/reducers.mal")
+(load-file-once "lib/trivial.mal")
+
 ;; mal has a pretty small core library
 ;; more-core has some extensions to it
 
@@ -20,6 +24,34 @@
         fst
         (apply and rst)))
 
-(def! partial (fn* [f & defargs]
+(defn! partial [f & defargs]
   (fn* [& appargs]
-    (apply f (concat defargs appargs)))))
+    (apply f (concat defargs appargs))))
+
+(defn! take [n coll]
+    (if (or (<= n 0) (empty? coll))
+        []
+        (cons (first coll)
+              (take (dec n) (rest coll)))))
+
+(defn! drop [n coll]
+    (if (<= n 0)
+        coll
+        (drop (dec n) (rest coll))))
+
+(defn! last [coll]
+    (first (drop (dec (count coll)) coll)))
+
+(defn! butlast [coll]
+    (take (dec (count coll)) coll))
+
+(defn! with-nth [n x coll]
+    (concat (take n coll)
+            (cons x (drop (inc n) coll))))
+
+(defn! comp2 [f g]
+    (fn* [& args]
+        (f (apply g args))))
+
+(defn! comp [& fs]
+    (foldr comp2 (last fs) (butlast fs)))

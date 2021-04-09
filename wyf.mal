@@ -1,5 +1,17 @@
 (load-file      "lib/load-file-once.mal")
 (load-file-once "lib/more-core.mal")
+(load-file-once "lib/trivial.mal")
+
+;; Tracing can be useful when testing programs.
+
+(def! *tracing* (atom false))
+
+(defn! set-tracing! [b]
+    (reset! *tracing* b))
+
+(defn! trace [& args]
+    (if (deref *tracing*)
+        (apply println "TRACE" args)))
 
 ;; We will read code from standard input,
 ;; mal only provides the readline function so
@@ -49,11 +61,16 @@
 (def! *stack* (atom (list)))
 
 (defn! push! [x]
-    (swap! *stack* (partial cons x)))
+    (do
+        (trace "push" x)
+        (swap! *stack* (partial cons x))))
 
 (defn! pop! []
     (let* [top (first (deref *stack*))]
-        (do (swap! *stack* rest) top)))
+        (do
+            (trace "pop" top)
+            (swap! *stack* rest)
+            top)))
 
 ;; ... and a dictionary ...
 
@@ -82,16 +99,105 @@
     (let* [chars (seq s)]
         (if (nil? chars)
             false
-            (apply and (map digit? chars)))))
+            (apply and
+                   (or (digit? (first chars)) (= "-" (first chars)))
+                   (map digit? (rest chars))))))
 
-(defn! number [s]
-    (read-string s))
+(defn! number [x]
+    (cond
+        (number? x) x
+        (string? x) (read-string x)))
+
+;; We can now run the program:
+;;     42 4711 + print
+
+;; Up next is branching, and for jumping around we need memory ...
+
+(def! *memory* (atom []))
+
+(defn! in-mem? [p]
+    (< p (count (deref *memory*))))
+
+(defn! read-mem [p]
+    (nth (deref *memory*) p))
+
+(defn! write-mem! [p v]
+    (swap! *memory* (partial with-nth p v)))
+
+;; ... and a program counter ...
+
+(def! *next* (atom 0))
+
+(defn! jump! [addr]
+    (do
+        (trace "jump to" addr)
+        (if (in-mem? addr)
+            (reset! *next* addr)
+            (throw (str "cannot jump to" skip)))))
+
+(defn! skip! [skip]
+    (jump! (+ (deref *next*) (number skip))))
+
+(defn! next-word! []
+    (if (in-mem? (deref *next*))
+        (read-next!)))
+
+(defn! read-next! []
+    (do
+        (trace "memory read from" (deref *next*))
+        (let* [w (read-mem (deref *next*))]
+            (do
+                (swap! *next* inc)
+                w))))
+
+(defn! write-next! [w]
+    (do
+        (trace "memory write" w "to" (deref *next*))
+        (write-mem! (deref *next*) w)
+        (swap! *next* inc)
+        w))
+
+;; ... and the program in memory.
+
+(defn! slurp-prog! []
+    (let* [w (get-next)]
+        (if (not (or (nil? w) (= "" w)))
+            (do
+                (write-next! w)
+                (slurp-prog!)))))
+
+;; Okay I think we can do branches now!
+
+(defword! "branch"
+          (skip! (next-word!)))
+
+(defword! "branch?"
+          (if (zero? (pop!))
+              (swap! *next* inc)
+              (skip! (dec (number (next-word!))))))
+
+;; .. and I think we need dup to make effective use of branch?
+
+(defword! "dup"
+          (let* [a (pop!)]
+              (do (push! a) (push! a))))
+
+;; We can now run the program:
+;;     -3 1 + dup dup print branch? -6
+
+;; Let's allow forth programs to turn on or off tracing.
+
+(defword! "trace"
+          (set-tracing! true))
+
+(defword! "notrace"
+          (set-tracing! false))
 
 ;; Go forth!
 
 (defn! forth []
-    (let* [w (get-next)]
-        (if (not (= "" w))
+    (let* [w (next-word!)]
+        (if (not (nil? w))
             (do
                 (cond
                     (recall w)   (apply (recall w))
@@ -99,4 +205,6 @@
                     :otherwise   (throw (str "unknown word '" w "'")))
                 (forth)))))
 
+(slurp-prog!)
+(reset! *next* 0)
 (forth)
